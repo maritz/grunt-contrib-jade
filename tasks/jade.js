@@ -58,30 +58,52 @@ module.exports = function(grunt) {
 
         options = grunt.util._.extend(options, { filename: filepath });
 
-        try {
-          compiled = require('jade').compile(src, options);
-          // if in client mode, return function source
-          if (options.client) {
-            compiled = compiled.toString();
+        if (options.client && options.multi_file) {
+          var $ = require('jquery');
+          var $html = $("<html><head></head><body>"+src+"</body></html>");
+          var file = "define([], function () { var exports = {};";
+          $html.find('script').each(function (i) {
+            var $this = $(this);
+            var name = $this.attr('name') || i;
+            var src = $this.html();
+            file += "exports."+name+" = ";
+            try {
+              compiled = require('jade').compile(src, options).toString();
+            } catch (e) {
+              grunt.log.error(e);
+              grunt.fail.warn('Jade failed to compile '+filepath+'.');
+            }
+            file += compiled+";";
+          });
+          file += "return exports;});";
+          templates.push(file);
+        } else {
+          try {
+            compiled = require('jade').compile(src, options);
+            // if in client mode, return function source
+            if (options.client) {
+              compiled = compiled.toString();
+            } else {
+              compiled = compiled(data);
+            }
+
+            // if configured for amd and the namespace has been explicitly set
+            // to false, the jade template will be directly returned
+            if (options.client && options.amd && options.namespace === false) {
+              compiled = 'return ' + compiled;
+            }
+          } catch (e) {
+            grunt.log.error(e);
+            grunt.fail.warn('Jade failed to compile '+filepath+'.');
+          }
+
+          if (options.client && options.namespace !== false) {
+            templates.push(nsInfo.namespace+'['+JSON.stringify(filename)+'] = '+compiled+';');
           } else {
-            compiled = compiled(data);
+            templates.push(compiled);
           }
-          
-          // if configured for amd and the namespace has been explicitly set
-          // to false, the jade template will be directly returned
-          if (options.client && options.amd && options.namespace === false) {
-            compiled = 'return ' + compiled;
-          }
-        } catch (e) {
-          grunt.log.error(e);
-          grunt.fail.warn('Jade failed to compile '+filepath+'.');
         }
 
-        if (options.client && options.namespace !== false) {
-          templates.push(nsInfo.namespace+'['+JSON.stringify(filename)+'] = '+compiled+';');
-        } else {
-          templates.push(compiled);
-        }
       });
 
       var output = templates;
